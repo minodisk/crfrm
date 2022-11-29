@@ -11,129 +11,14 @@ import (
 )
 
 var (
-	thickness     = 2.0
-	wallThickness = 2.4
-	boardHeight   = 4.0
-	wallHeight    = 16.8
-	oledHeight    = 2.0
+	buffer         = 0.2
+	thickness      = 2.0
+	wallThickness  = 2.4
+	boardHeight    = 4.0
+	wallHeight     = 13.8
+	oledWallHeight = 13.8
+	oledHeight     = 2.0
 )
-
-func top(svg *svg.SVG) (sdf.SDF3, error) {
-	k, err := keyPlate(svg)
-	if err != nil {
-		return nil, err
-	}
-	// b, err := bottom(svg)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	w, err := wall(svg)
-	if err != nil {
-		return nil, err
-	}
-	bo, err := board(svg)
-	if err != nil {
-		return nil, err
-	}
-	o, err := oled(svg)
-	if err != nil {
-		return nil, err
-	}
-	return sdf.Difference3D(sdf.Union3D(k /*b,*/, w, o), bo), nil
-}
-
-func keyPlate(svg *svg.SVG) (sdf.SDF3, error) {
-	top, err := svg.Find("top").Draw()
-	if err != nil {
-		return nil, err
-	}
-	screw, err := svg.Find("screw").Draw()
-	if err != nil {
-		return nil, err
-	}
-	base := sdf.Offset2D(sdf.Difference2D(top, screw), thickness)
-
-	keyHole, err := svg.Find("key").Draw()
-	if err != nil {
-		return nil, err
-	}
-
-	return sdf.Transform3D(
-		sdf.Extrude3D(
-			sdf.Difference2D(base, keyHole),
-			thickness,
-		),
-		sdf.Translate3d(
-			v3.Vec{X: 0, Y: 0, Z: boardHeight + thickness*1.5},
-		),
-	), nil
-}
-
-func bottom(svg *svg.SVG) (sdf.SDF3, error) {
-	inner, err := svg.Find("bottom").Draw()
-	if err != nil {
-		return nil, err
-	}
-	screw, err := svg.Find("screw").Draw()
-	if err != nil {
-		return nil, err
-	}
-	return sdf.Transform3D(sdf.Extrude3D(sdf.Difference2D(inner, screw), thickness), sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: thickness / 2})), nil
-}
-
-func wall(svg *svg.SVG) (sdf.SDF3, error) {
-	bottom, err := svg.Find("bottom").Draw()
-	if err != nil {
-		return nil, err
-	}
-	inner := sdf.Extrude3D(bottom, wallHeight)
-	outer := sdf.Extrude3D(sdf.Offset2D(bottom, wallThickness), wallHeight)
-	wall := sdf.Transform3D(sdf.Difference3D(outer, inner), sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallHeight / 2}))
-	return wall, nil
-}
-
-func oled(svg *svg.SVG) (sdf.SDF3, error) {
-	bottom, err := svg.Find("bottom").Draw()
-	if err != nil {
-		return nil, err
-	}
-	top, err := svg.Find("top").Draw()
-	if err != nil {
-		return nil, err
-	}
-	outer := sdf.Difference2D(bottom, top)
-	oled, err := svg.Find("oled").Draw()
-	if err != nil {
-		return nil, err
-	}
-
-	wallZ := thickness + boardHeight
-	wallH := wallHeight - wallZ
-	wall := sdf.Transform3D(
-		sdf.Extrude3D(
-			sdf.Difference2D(outer, oled),
-			wallH,
-		),
-		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallZ + wallH/2}),
-	)
-
-	frame := sdf.Transform3D(
-		sdf.Extrude3D(sdf.Difference2D(oled, sdf.Offset2D(oled, -2.0)), oledHeight),
-		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallHeight - thickness - thickness/2}),
-	)
-	return sdf.Union3D(wall, frame), nil
-}
-
-func board(svg *svg.SVG) (sdf.SDF3, error) {
-	bottom, err := svg.Find("bottom").Draw()
-	if err != nil {
-		return nil, err
-	}
-	return sdf.Transform3D(
-		sdf.Extrude3D(bottom, boardHeight),
-		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: thickness + boardHeight/2}),
-	), nil
-}
 
 func main() {
 	svg, err := svg.NewSVG("./assets.svg")
@@ -145,5 +30,68 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(300))
+	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(1000))
+}
+
+func top(svg *svg.SVG) (sdf.SDF3, error) {
+	top, err := svg.Find("top").Draw()
+	if err != nil {
+		return nil, err
+	}
+	bottom, err := svg.Find("bottom").Draw()
+	if err != nil {
+		return nil, err
+	}
+	oled, err := svg.Find("oled").Draw()
+	if err != nil {
+		return nil, err
+	}
+	screw, err := svg.Find("screw").Draw()
+	if err != nil {
+		return nil, err
+	}
+	key, err := svg.Find("key").Draw()
+	if err != nil {
+		return nil, err
+	}
+
+	wall := createWall(top, bottom, oled)
+	keyPlate := createKeyPlate(top, screw, key)
+	boardSpace := createBoardSpace(bottom)
+	o := createOLED(oled)
+	return sdf.Difference3D(sdf.Union3D(wall, keyPlate, o), boardSpace), nil
+}
+
+func createWall(top, bottom, oled sdf.SDF2) sdf.SDF3 {
+	return sdf.Transform3D(
+		sdf.Extrude3D(sdf.Difference2D(sdf.Difference2D(sdf.Offset2D(bottom, buffer+wallThickness), sdf.Offset2D(top, buffer)), sdf.Offset2D(oled, buffer)), wallHeight),
+		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallHeight / 2}),
+	)
+}
+
+func createKeyPlate(top, screw, key sdf.SDF2) sdf.SDF3 {
+	return sdf.Transform3D(
+		sdf.Extrude3D(
+			sdf.Difference2D(sdf.Difference2D(sdf.Offset2D(top, buffer), key), screw),
+			thickness,
+		),
+		sdf.Translate3d(
+			v3.Vec{X: 0, Y: 0, Z: boardHeight + thickness*1.5},
+		),
+	)
+}
+
+func createOLED(oled sdf.SDF2) sdf.SDF3 {
+	return sdf.Transform3D(
+		sdf.Extrude3D(sdf.Difference2D(oled, sdf.Offset2D(oled, -1.0)), oledHeight),
+		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallHeight - oledHeight/2}),
+	)
+}
+
+func createBoardSpace(bottom sdf.SDF2) sdf.SDF3 {
+	h := thickness + boardHeight
+	return sdf.Transform3D(
+		sdf.Extrude3D(sdf.Offset2D(bottom, buffer), h),
+		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: h / 2}),
+	)
 }
