@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 
+	"github.com/minodisk/crfrm/oled"
 	"github.com/minodisk/crfrm/svg"
+	"github.com/pkg/errors"
 
 	"github.com/deadsy/sdfx/render"
 	"github.com/deadsy/sdfx/sdf"
@@ -11,26 +13,24 @@ import (
 )
 
 var (
-	buffer         = 0.2
-	thickness      = 2.0
-	wallThickness  = 2.4
-	boardHeight    = 4.0
-	wallHeight     = 13.8
-	oledWallHeight = 13.8
-	oledHeight     = 2.0
+	buffer        = 0.2
+	thickness     = 1.6
+	wallThickness = 1.6
+	boardHeight   = 4.0
+	wallHeight    = 13.8
 )
 
 func main() {
 	svg, err := svg.NewSVG("./assets.svg")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(errors.Wrap(err, "fail to parse SVG"))
 	}
 
 	f, err := top(svg)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(errors.Wrap(err, "fail to create top"))
 	}
-	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(1000))
+	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(300))
 }
 
 func top(svg *svg.SVG) (sdf.SDF3, error) {
@@ -42,7 +42,7 @@ func top(svg *svg.SVG) (sdf.SDF3, error) {
 	if err != nil {
 		return nil, err
 	}
-	oled, err := svg.Find("oled").Draw()
+	oled2D, err := svg.Find("oled").Draw()
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +55,22 @@ func top(svg *svg.SVG) (sdf.SDF3, error) {
 		return nil, err
 	}
 
-	wall := createWall(top, bottom, oled)
+	wall := createWall(top, bottom, oled2D)
 	keyPlate := createKeyPlate(top, screw, key)
 	boardSpace := createBoardSpace(bottom)
-	o := createOLED(oled)
-	return sdf.Difference3D(sdf.Union3D(wall, keyPlate, o), boardSpace), nil
+	o, err := oled.CreateOLED(oled2D, wallHeight)
+	if err != nil {
+		return nil, err
+	}
+	usb := oled.CreateUSBHole()
+
+	return sdf.Difference3D(
+		sdf.Difference3D(
+			sdf.Union3D(wall, keyPlate, o),
+			boardSpace,
+		),
+		usb,
+	), nil
 }
 
 func createWall(top, bottom, oled sdf.SDF2) sdf.SDF3 {
@@ -78,13 +89,6 @@ func createKeyPlate(top, screw, key sdf.SDF2) sdf.SDF3 {
 		sdf.Translate3d(
 			v3.Vec{X: 0, Y: 0, Z: boardHeight + thickness*1.5},
 		),
-	)
-}
-
-func createOLED(oled sdf.SDF2) sdf.SDF3 {
-	return sdf.Transform3D(
-		sdf.Extrude3D(sdf.Difference2D(oled, sdf.Offset2D(oled, -1.0)), oledHeight),
-		sdf.Translate3d(v3.Vec{X: 0, Y: 0, Z: wallHeight - oledHeight/2}),
 	)
 }
 

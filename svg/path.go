@@ -15,14 +15,17 @@ type Path struct {
 	StrokeLineJoin string `xml:"stroke-linejoin,attr"`
 }
 
-func (p *Path) ToBezier() (*sdf.Bezier, error) {
-	b := sdf.NewBezier()
+func (p *Path) ToBeziers() ([]*sdf.Bezier, error) {
+	var beziers []*sdf.Bezier
+	var b *sdf.Bezier
 	d := p.Draw
-
 	l := len(d)
 	for i := 0; i < l; i++ {
 		switch d[i] {
 		case 'M':
+			if b == nil {
+				b = sdf.NewBezier()
+			}
 			p, j, err := readPoint2D(d, i+1, l)
 			if err != nil {
 				return nil, err
@@ -53,10 +56,17 @@ func (p *Path) ToBezier() (*sdf.Bezier, error) {
 			NewCubicBezier(start, mid, end).DrawTo(b)
 		case 'Z':
 			NewClosePath().DrawTo(b)
+			beziers = append(beziers, b)
+			b = nil
 		}
 	}
+	if b != nil {
+		NewClosePath().DrawTo(b)
+		beziers = append(beziers, b)
+		b = nil
+	}
 
-	return b, nil
+	return beziers, nil
 }
 
 func readPoint2D(d string, start int, last int) (*Point2D, int, error) {
@@ -77,7 +87,7 @@ func readFloat64(d string, start int, last int) (float64, int, error) {
 	for ; i < last; i++ {
 		c := d[i]
 		switch c {
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.':
+		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.':
 			n = n + string(c)
 		default:
 			f, err := strconv.ParseFloat(n, 64)
