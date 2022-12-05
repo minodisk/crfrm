@@ -63,13 +63,17 @@ func top(svg *svg.SVG) (sdf.SDF3, error) {
 		return nil, err
 	}
 	usb := oled.CreateUSBHole()
+	trrs, err := oled.CreateTRRSHole()
+	if err != nil {
+		return nil, err
+	}
 
 	return sdf.Difference3D(
 		sdf.Difference3D(
-			sdf.Union3D(wall, keyPlate, o),
+			sdf.Union3D(wall, keyPlate, o, trrs),
 			boardSpace,
 		),
-		usb,
+		sdf.Union3D(usb, trrs),
 	), nil
 }
 
