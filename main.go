@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/minodisk/crfrm/oled"
@@ -13,6 +14,7 @@ import (
 )
 
 var (
+	meshCells     = 300
 	buffer        = 0.2
 	thickness     = 1.6
 	wallThickness = 1.6
@@ -30,7 +32,7 @@ func main() {
 	if err != nil {
 		log.Fatal(errors.Wrap(err, "fail to create top"))
 	}
-	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(300))
+	render.ToSTL(f, "crfrm.stl", render.NewMarchingCubesUniform(meshCells))
 }
 
 func top(svg *svg.SVG) (sdf.SDF3, error) {
@@ -85,9 +87,16 @@ func createWall(top, bottom, oled sdf.SDF2) sdf.SDF3 {
 }
 
 func createKeyPlate(top, screw, key sdf.SDF2) sdf.SDF3 {
+	fmt.Println(screw)
 	return sdf.Transform3D(
 		sdf.Extrude3D(
-			sdf.Difference2D(sdf.Difference2D(sdf.Offset2D(top, buffer), key), screw),
+			sdf.Difference2D(
+				sdf.Difference2D(
+					sdf.Offset2D(top, buffer),
+					key,
+				),
+				screw,
+			),
 			thickness,
 		),
 		sdf.Translate3d(
